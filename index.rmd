@@ -40,15 +40,18 @@ LegislatorSentenceMaker<- function(first.name, last.name){
 }
 first.name.list<-legislator.data$results.first_name
 last.name.list<-legislator.data$results.last_name
-sentence.list<-c( LegislatorSentenceMaker(first.name.list[1], last.name.list[1]),LegislatorSentenceMaker(first.name.list[2], last.name.list[2]),LegislatorSentenceMaker(first.name.list[3], last.name.list[3]),LegislatorSentenceMaker(first.name.list[4], last.name.list[4]))
+
+sentence.list<-c( LegislatorSentenceMaker(first.name.list[1], last.name.list[1]),LegislatorSentenceMaker(first.name.list[2], last.name.list[2]),LegislatorSentenceMaker(first.name.list[3], last.name.list[3]))
+
+
+bio.guide.id.list<-legislator.data$results.bioguide_id
 
 ```
 The local representatives for this district are: 
 
-* `r sentence.list[1]`
-* `r sentence.list[2]`
-* `r sentence.list[3]`
-* `r sentence.list[4]`
+* ![Legislator Picture](https://theunitedstates.io/images/congress/225x275/`r bio.guide.id.list[1]`.jpg) `r sentence.list[1]` 
+* ![Legislator Picture](https://theunitedstates.io/images/congress/225x275/`r bio.guide.id.list[2]`.jpg) `r sentence.list[2]` 
+* ![Legislator Picture](https://theunitedstates.io/images/congress/225x275/`r bio.guide.id.list[3]`.jpg) `r sentence.list[3]` 
 
 ##Congressional Bills
 ```{r congress, include=FALSE}

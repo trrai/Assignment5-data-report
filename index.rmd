@@ -1,0 +1,133 @@
+---
+title: "Congress Report"
+author: "Tejveer Rai"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(maps)
+library(jsonlite)
+library(httr)
+library(dplyr)
+library(knitr)
+library("ggplot2")
+
+zip.code<-"98105"
+search.query<-"health care"
+roll.id<-"s36-2017"
+link.to.full.text<-"https://www.senate.gov/legislative/LIS/roll_call_lists/roll_call_vote_cfm.cfm?congress=115&session=1&vote=00036"
+
+```
+This report is a display of data concerning the United States congress, including actions and voting records. The following data was processed from the information collected by the Sunlight Foundation. Specifically, we'll be working with the
+**`r zip.code`** zip code!
+
+## Local Representatives
+```{r legislator, include=FALSE}
+query.params<-list(zip = zip.code)
+leg.data.received<-GET("https://congress.api.sunlightfoundation.com/legislators/locate", query=query.params)
+leg.data<-fromJSON(content(leg.data.received, "text"))
+legislator.data<-flatten(data.frame(leg.data))
+
+LegislatorSentenceMaker<- function(first.name, last.name){
+  filtered.data<-filter(legislator.data, results.first_name == first.name)
+  state<-filtered.data %>% select(results.state)
+  party<-filtered.data %>% select(results.party)
+  phone.Num<-filtered.data %>% select(results.phone)
+  sentence<-paste(first.name, last.name, "(", state, "-", party, ")", 
+                  "Phone:", phone.Num)
+  return(sentence)
+}
+first.name.list<-legislator.data$results.first_name
+last.name.list<-legislator.data$results.last_name
+sentence.list<-c( LegislatorSentenceMaker(first.name.list[1], last.name.list[1]),LegislatorSentenceMaker(first.name.list[2], last.name.list[2]),LegislatorSentenceMaker(first.name.list[3], last.name.list[3]),LegislatorSentenceMaker(first.name.list[4], last.name.list[4]))
+
+```
+The local representatives for this district are: 
+
+* `r sentence.list[1]`
+* `r sentence.list[2]`
+* `r sentence.list[3]`
+* `r sentence.list[4]`
+
+##Congressional Bills
+```{r congress, include=FALSE}
+query.params<-list(query = search.query, order = "introduced_on", per_page = 25)
+bill.data.received<-GET("https://congress.api.sunlightfoundation.com/bills/search", query = query.params)
+
+bill.data<-fromJSON(content(bill.data.received, "text"))
+bills.data<-flatten(data.frame(bill.data))
+
+final.bills.data<-select(bills.data, results.bill_id, results.introduced_on, results.official_title) %>% mutate(link = paste0("[Link]", "(", bills.data$results.urls.congress, ")"))
+
+final.bills.data.col.names<-c("Bill ID", "Introduction Date", "Official Title", "Link to Bill")
+```
+The table below lists 25 bills that are related to the topic of _`r search.query`_. There is some general information included in the table but feel free to click the link to get an in-depth look at any of the bills! 
+
+`r kable(final.bills.data, col.names = final.bills.data.col.names)`
+
+#Voting on an Issue
+
+###Individual Votes
+```{r individual voting, include=FALSE}
+query.params<-list(roll_id = roll.id,fields="voters")
+get.request.result<-GET("https://congress.api.sunlightfoundation.com/votes", query = query.params)
+
+#This line takes our returned raw data and turns it into a list
+request.body.as.list <- content(get.request.result) 
+#This specifies only the voters from that list
+voters.list <- request.body.as.list$results[[1]]$voters
+#This is setting our name attributes to nothing
+names(voters.list) <- NULL
+#We're now turning our final list into a json object
+voters.json <- toJSON(voters.list)
+#This json object is now finally being turned into a dataframe we can manipulate. We bring out our nested data frames with flatten. 
+voters.as.data.frame <- flatten(fromJSON(voters.json, flatten=TRUE))
+
+
+#unpack our lists so we can use dplyr efficiently 
+voters.as.data.frame$voter.first_name<-unlist(voters.as.data.frame$voter.first_name)
+voters.as.data.frame$voter.last_name<-unlist(voters.as.data.frame$voter.last_name)
+voters.as.data.frame$voter.party<-unlist(voters.as.data.frame$voter.party)
+voters.as.data.frame$vote<-unlist(voters.as.data.frame$vote)
+voters.as.data.frame<-filter(voters.as.data.frame,vote != "Not Voting")
+
+individual.voter.data.frame<- select(voters.as.data.frame, vote, voter.first_name, voter.last_name, voter.party) %>% filter(voter.first_name %in% first.name.list, voter.last_name %in% last.name.list) 
+
+individual.voter.col.names<-c("Vote", "First Name", "Last Name", "Political Party")
+
+```
+The following vote data is in regards to the nomination of Rex W. Tillerson, former chairman and chief of Exxon Mobil, as secretary of state. His nomination set out to make history as he now holds the record for the most opposing votes in Senate history! See how the vote for his nomation breaks down per individual: 
+`r kable(individual.voter.data.frame, col.names = individual.voter.col.names)`
+
+
+###Party Votes
+```{r party voting, include=FALSE}
+party.frame<-group_by(voters.as.data.frame, voter.party) %>% summarize(majority.vote = if (sum(vote == "Yea") > sum(vote == "Nay")){"Yea"}else{"Nay"}, num.majority.vote = sum(vote == majority.vote), party.members.num = sum(voter.party == voter.party))
+
+party.frame.col.names<-c("Political Party", "Majority Vote", "Majority Vote Count", "Party Members Count")
+
+
+comparison.frame<-select(individual.voter.data.frame, voter.first_name, voter.last_name) %>% mutate(compare_to_party = if(individual.voter.data.frame$vote == party.frame[party.frame$voter.party == individual.voter.data.frame$voter.party, "majority.vote"]){"With"}else{"Against"})
+
+comparison.frame.col.names<-c("First Name", "Last Name", "Agreed/Disagreed With Party Majority Vote")
+
+```
+
+This table is a grouping of the data by political party. Here we can see how each party favored the nomination and what the majority decision ended up being. 
+`r kable(party.frame, col.names = party.frame.col.names)`
+
+Here we can observe how our data compares by seeing whether the local representatives agreed or disagreed with the majority vote for their party on this specific issue! 
+`r kable(comparison.frame, col.names = comparison.frame.col.names)`
+
+
+###Visual 
+Looking at the bar graph below, we can see a visual representation of the breakdown of votes on this proposal. We can observe the number of each vote as well as how many party members made up the overall vote. 
+
+```{r voter visual, echo=FALSE}
+ggplot(data = voters.as.data.frame) +
+  geom_bar(mapping = aes(x = vote, fill = voter.party)) +
+  labs(x = "Vote", y = "# of Votes", fill = "Voter Party")
+
+```
+
